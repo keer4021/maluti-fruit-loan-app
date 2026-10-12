@@ -1,0 +1,14 @@
+{
+  "name": "maluti-fruit-loan-app",
+  "version": "1.0.0",
+  "description": "Maluti Fruit Loan App desktop application",
+  "main": "main.js",
+  "scripts": {
+    "start": "electron .",
+    "dev": "electron .",
+    "package:win": "electron-builder --win --dir"
+  },
+  "devDependencies": {
+    "electron": "^31.7.4"
+  }
+}
