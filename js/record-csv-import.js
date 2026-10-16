@@ -159,7 +159,7 @@
           if(transactions){let store=record.store;delete record.store;next[store].push(record);}
           else next[kind==='employees'?'employees':'loans'].push(record);
         }
-        localStorage.setItem(KEY,JSON.stringify(next));db=next;pending=null;render();summary.textContent=`Imported ${additions.length} new records successfully. Existing records were kept unchanged.`;
+        db=next;pending=null;save();summary.textContent=`Imported ${additions.length} new records successfully. Existing records were kept unchanged.`;
       }catch(e){summary.textContent='Import not completed: '+e.message;}
     };
   }

@@ -9,16 +9,14 @@ function createWindow() {
     minHeight: 700,
     backgroundColor: '#f3f6f9',
     autoHideMenuBar: true,
-    icon: path.join(__dirname, 'favicon.ico'),
     webPreferences: {
       contextIsolation: true,
-      nodeIntegration: false,
-      preload: path.join(__dirname, 'preload.js')
+      nodeIntegration: false
     }
   });
 
   win.setTitle('Maluti Fruit Loan App');
-  win.loadFile(path.join(__dirname, 'index.html'));
+  win.loadFile(path.join(__dirname, 'pages', 'index.html'));
 }
 
 app.whenReady().then(() => {

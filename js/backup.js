@@ -1,0 +1,7 @@
+// Backup: download a JSON backup, restore one, or clear all data.
+downloadBackup.onclick=()=>downloadWithPicker(backupFileName(),JSON.stringify(db,null,2),'application/json',{types:[{description:'JSON Backup',accept:{'application/json':['.json']}}]});
+restoreBackup.onclick=async()=>{try{if(!backupFile.files[0])throw Error('Choose a backup file first');let d=JSON.parse(await backupFile.files[0].text());if(!Array.isArray(d.loans)||!Array.isArray(d.payroll)||!Array.isArray(d.pastel))throw Error('Invalid backup file');if(confirm('Replace the current data with this backup?')){db=addEmployees(d);db.loans.forEach(loan=>{if(!Array.isArray(loan.repayments))loan.repayments=[]});save();alert('Data has been restored.')}}catch(e){alert(e.message)}};
+clearBackupFields.onclick=()=>{backupFile.value=''};
+clearAllDataButton.onclick=()=>{let confirmText=(clearAllDataConfirmText.value||'').trim().toUpperCase();if(confirmText!=='DELETE'){clearAllDataStatus.textContent='Type DELETE in the field above to confirm.';clearAllDataStatus.className='bad pill';return}if(!confirm('Are you 100% sure? This will permanently delete ALL employees, loans, payments and other data.'))return;db={employees:[],loans:[],payroll:[],pastel:[],loanTypes:[]};save();clearAllDataConfirmText.value='';clearAllDataStatus.textContent='All data has been deleted.';clearAllDataStatus.className='good pill'};
+function renderPage(){backupFileNamePreview.textContent='Next backup filename: '+backupFileName()}
+render();

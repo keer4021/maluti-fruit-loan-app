@@ -1,12 +1,18 @@
+// Agreement: fills the loan agreement template (js/loan-agreement-template.js)
+// for the selected loan and shows it, with the amortisation schedule and loan
+// history, in an iframe ready to print.
+function renderPage(){
+  let selected=agreementLoan.value;
+  agreementLoan.innerHTML=db.loans.map(x=>`<option value="${x.id}">${esc(x.applicationNo||'New')} - ${esc(x.applicationDate||String(x.created||'').slice(0,10)||'No date')} - ${esc(x.employeeName)} - ${money(x.amount)}</option>`).join('');
+  if(db.loans.some(x=>x.id===selected))agreementLoan.value=selected;
+}
+render();
 (() => {
   'use strict';
   const el = id => document.getElementById(id);
-  const css = document.createElement('style');
-  css.textContent = '#agreementPaper,#agreementDocStatusCard{display:none!important}#loanAgreementFrame{width:100%;height:1150px;border:0;background:white;margin-top:16px}';
-  document.head.append(css);
   const card = document.createElement('div');
   card.className = 'card';
-  card.innerHTML = '<h2>Loan Agreement</h2><p id="loanAgreementNotice">Choose a loan and click Complete to fill the agreement.</p><a href="templates/loan%20agreement.html" download="loan agreement.html">Download blank agreement</a>';
+  card.innerHTML = '<h2>Loan Agreement</h2><p id="loanAgreementNotice">Choose a loan and click Complete to fill the agreement.</p><a href="../templates/loan%20agreement.html" download="loan agreement.html">Download blank agreement</a>';
   el('agreementControls').before(card);
   const frame = document.createElement('iframe');
   frame.id = 'loanAgreementFrame';

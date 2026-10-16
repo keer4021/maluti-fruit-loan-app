@@ -1,0 +1,25 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1">
+  <title>Audit Trail - Maluti Fruit Loan App</title>
+  <link rel="stylesheet" href="../css/app.css">
+</head>
+<body data-page="audit">
+<div id="appShell"></div>
+<main>
+  <section id="audit" class="page">
+    <div class="card"><h2>Audit Trail</h2><p class="muted">Every change saved in the app is recorded here: employees, loans, loan types, payments, reversals and data imports.</p>
+      <div class="grid"><div><label>From</label><input id="auditFrom" type="date"></div><div><label>To</label><input id="auditTo" type="date"></div><div><label>Record Type</label><select id="auditEntity"><option value="">All</option><option>Employee</option><option>Loan</option><option>Payment</option><option>Loan Type</option><option>Payroll Import</option><option>Pastel Import</option></select></div><div><label>Action</label><select id="auditAction"><option value="">All</option><option>Added</option><option>Changed</option><option>Deleted</option><option>Posted</option><option>Reversed</option><option>Removed</option></select></div></div>
+      <label>Search</label><input id="auditSearch" placeholder="Employee number, name, loan number or detail">
+      <div class="actions"><button class="btn" type="button" id="auditClearFilters">Clear Filters</button><button class="primary" type="button" id="auditExport">Export CSV</button></div>
+      <p class="muted" id="auditCount"></p>
+    </div>
+    <div class="card" style="margin-top:16px"><div class="tablebox"><table><thead><tr><th>Date &amp; Time</th><th>User</th><th>Page</th><th>Record Type</th><th>Action</th><th>Record</th><th>Details</th></tr></thead><tbody id="auditRows"></tbody></table></div></div>
+  </section>
+</main>
+<script src="../js/core.js"></script>
+<script src="../js/audit.js"></script>
+</body>
+</html>
