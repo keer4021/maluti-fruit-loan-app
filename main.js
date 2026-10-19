@@ -1,5 +1,21 @@
-const { app, BrowserWindow } = require('electron');
+const { app, BrowserWindow, dialog, ipcMain } = require('electron');
 const path = require('path');
+
+function showDialog(event, options) {
+  const win = BrowserWindow.fromWebContents(event.sender);
+  const result = dialog.showMessageBoxSync(win, { title: 'Maluti Fruit Loan App', noLink: true, ...options });
+  win.webContents.focus();
+  return result;
+}
+
+ipcMain.on('dialog-alert', (event, message) => {
+  showDialog(event, { type: 'info', message, buttons: ['OK'] });
+  event.returnValue = undefined;
+});
+
+ipcMain.on('dialog-confirm', (event, message) => {
+  event.returnValue = showDialog(event, { type: 'question', message, buttons: ['OK', 'Cancel'], defaultId: 0, cancelId: 1 }) === 0;
+});
 
 function createWindow() {
   const win = new BrowserWindow({
@@ -10,6 +26,7 @@ function createWindow() {
     backgroundColor: '#f3f6f9',
     autoHideMenuBar: true,
     webPreferences: {
+      preload: path.join(__dirname, 'preload.js'),
       contextIsolation: true,
       nodeIntegration: false
     }

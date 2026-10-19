@@ -41,7 +41,7 @@ function updateOutstanding(){
   }
 }
 function resetPaymentForm(){
-  payEmployee.value='';renderPaymentLoans();payDate.value=localToday();paySource.value='Payroll';payAmount.value='';payNote.value='';editPaymentId.value='';loanPaymentFormTitle.textContent='Post Payment Against Loan';postLoanPayment.textContent='Post Payment';cancelPaymentEdit.classList.add('hide');payStatus.textContent='';payStatus.className='muted';renderPaymentHistory();
+  payEmployee.value='';renderPaymentLoans();payDate.value=localToday();paySource.value='Payroll';payAmount.value='';payNote.value='';editPaymentId.value='';loanPaymentFormTitle.textContent='Post Payment Against Loan';postLoanPayment.textContent='Post Payment';cancelPaymentEdit.classList.add('hide');payStatus.textContent='';payStatus.className='muted';renderPaymentHistory();renderBulkPayment();
 }
 function clearFieldsAfterPost(){
   payAmount.value='';payNote.value='';editPaymentId.value='';loanPaymentFormTitle.textContent='Post Payment Against Loan';postLoanPayment.textContent='Post Payment';cancelPaymentEdit.classList.add('hide');
@@ -83,8 +83,52 @@ function editLoanPaymentEntry(loanId,paymentId){
   payStatus.textContent='';payStatus.className='muted';
   window.scrollTo({top:0,behavior:'smooth'});
 }
-function renderPage(){renderPaymentEmployees();renderPaymentLoans();renderPaymentHistory()}
-payEmployee.onchange=()=>{payLoan.value='';payAmount.value='';payStatus.textContent='';renderPaymentLoans();renderPaymentHistory()};
+// Bulk payment: one payment per open loan of the selected employee.
+function bulkLoans(){return payEmployee.value?db.loans.filter(loan=>loan.employeeNo===payEmployee.value&&loan.status!=='Cancelled'&&loanBalance(loan)>.005).sort((a,b)=>String(a.firstPeriod||loanDate(a)).localeCompare(String(b.firstPeriod||loanDate(b)))||String(a.applicationNo||'').localeCompare(String(b.applicationNo||''),undefined,{numeric:true})):[]}
+function renderBulkPayment(){
+  let loans=bulkLoans();
+  bulkPaymentCard.classList.toggle('hide',!payEmployee.value);
+  bulkPaymentTitle.textContent=`Bulk Payment - ${payEmployee.value}`;
+  bulkRows.innerHTML=loans.length?loans.map(loan=>{let bal=loanBalance(loan),def=Math.min(Number(loan.payment)||0,bal);return `<tr><td>${esc(loan.applicationNo||'')}</td><td>${esc(loan.type||'Loan')}</td><td>${money(loan.payment)}</td><td>${money(bal)}</td><td><input class="bulkAmount" data-loan="${loan.id}" type="number" min="0" step="0.01" value="${def>0?def.toFixed(2):''}"></td><td class="bulkAfter"></td></tr>`}).join(''):'<tr><td colspan="6" class="empty">This employee has no open loans.</td></tr>';
+  bulkRows.querySelectorAll('.bulkAmount').forEach(input=>input.oninput=updateBulkTotals);
+  updateBulkTotals();
+}
+function updateBulkTotals(){
+  let sum=0;
+  bulkRows.querySelectorAll('.bulkAmount').forEach(input=>{let loan=db.loans.find(l=>l.id===input.dataset.loan),amount=Number(input.value)||0,bal=loanBalance(loan);sum+=amount;let cell=input.closest('tr').querySelector('.bulkAfter');cell.textContent=money(Math.max(0,bal-amount));cell.className='bulkAfter'+(amount>bal+.005?' bad':'')});
+  bulkSum.textContent=money(sum);
+}
+function setBulkStatus(text,cls){bulkStatus.textContent=text;bulkStatus.className=cls}
+bulkFillMonthly.onclick=()=>{renderBulkPayment();setBulkStatus('','muted')};
+bulkClear.onclick=()=>{bulkRows.querySelectorAll('.bulkAmount').forEach(input=>input.value='');bulkTotal.value='';updateBulkTotals();setBulkStatus('','muted')};
+bulkAllocate.onclick=()=>{
+  let remaining=Number(bulkTotal.value);
+  if(!Number.isFinite(remaining)||remaining<=0){setBulkStatus('Enter a total amount to allocate.','bad pill');return}
+  bulkRows.querySelectorAll('.bulkAmount').forEach(input=>{let bal=loanBalance(db.loans.find(l=>l.id===input.dataset.loan)),amount=Math.min(bal,remaining);remaining=Math.round((remaining-amount)*100)/100;input.value=amount>0?amount.toFixed(2):''});
+  updateBulkTotals();
+  setBulkStatus(remaining>.005?`Allocated. ${money(remaining)} exceeds the total outstanding and was not allocated.`:'Allocated oldest loan first.',remaining>.005?'warn pill':'muted');
+};
+postBulkPayment.onclick=()=>{
+  let date=bulkDate.value,source=bulkSource.value,note=bulkNote.value.trim(),items=[];
+  if(!date){setBulkStatus('Enter a payment date.','bad pill');return}
+  for(let input of bulkRows.querySelectorAll('.bulkAmount')){
+    let loan=db.loans.find(l=>l.id===input.dataset.loan),amount=Number(input.value)||0;
+    if(amount<0){setBulkStatus('Amounts cannot be negative.','bad pill');return}
+    if(amount>loanBalance(loan)+.005){setBulkStatus(`Amount for loan ${loan.applicationNo} cannot be greater than the outstanding balance of ${money(loanBalance(loan))}.`,'bad pill');return}
+    if(amount>0)items.push({loan,amount});
+  }
+  if(!items.length){setBulkStatus('Enter at least one amount.','bad pill');return}
+  let total=items.reduce((s,i)=>s+i.amount,0);
+  if(!confirm(`Post ${items.length} ${source} payment(s) totalling ${money(total)} for employee ${payEmployee.value}?`))return;
+  let now=new Date().toISOString();
+  items.forEach(({loan,amount})=>{let balanceAfter=Math.max(0,loanBalance(loan)-amount);loan.repayments.push({id:crypto.randomUUID(),date,period:date.slice(0,7),amount,source,note,balanceAfter,postedAt:now});normaliseLoanStatus(loan)});
+  save();
+  bulkTotal.value='';bulkNote.value='';
+  renderPaymentLoans();renderPaymentHistory();renderBulkPayment();
+  setBulkStatus(`Posted ${items.length} payment(s) totalling ${money(total)}.`,'good pill');
+};
+function renderPage(){renderPaymentEmployees();renderPaymentLoans();renderPaymentHistory();renderBulkPayment()}
+payEmployee.onchange=()=>{payLoan.value='';payAmount.value='';payStatus.textContent='';setBulkStatus('','muted');renderPaymentLoans();renderPaymentHistory();renderBulkPayment()};
 payLoan.onchange=()=>{payAmount.value='';updateOutstanding()};
 clearLoanPayment.onclick=resetPaymentForm;
 cancelPaymentEdit.onclick=resetPaymentForm;
@@ -119,6 +163,7 @@ postLoanPayment.onclick=()=>{
   clearFieldsAfterPost();
   renderPaymentLoans();
   renderPaymentHistory();
+  renderBulkPayment();
 };
-payDate.value=localToday();
+payDate.value=localToday();bulkDate.value=localToday();
 render();

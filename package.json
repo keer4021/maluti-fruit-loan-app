@@ -15,6 +15,7 @@
     "productName": "Maluti Fruit Loan App",
     "files": [
       "main.js",
+      "preload.js",
       "pages/**/*",
       "js/**/*",
       "css/**/*",
