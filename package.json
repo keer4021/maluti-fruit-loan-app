@@ -6,9 +6,41 @@
   "scripts": {
     "start": "electron .",
     "dev": "electron .",
-    "package:win": "electron-builder --win --dir"
+    "package:win": "electron-builder --win --dir",
+    "dist:win": "electron-builder --win nsis portable"
+  },
+  "author": "Maluti Fruit",
+  "build": {
+    "appId": "com.malutifruit.loanapp",
+    "productName": "Maluti Fruit Loan App",
+    "files": [
+      "main.js",
+      "pages/**/*",
+      "js/**/*",
+      "css/**/*",
+      "templates/**/*",
+      "vendor/**/*"
+    ],
+    "directories": {
+      "output": "dist"
+    },
+    "win": {
+      "target": ["nsis", "portable"],
+      "signAndEditExecutable": false
+    },
+    "nsis": {
+      "oneClick": false,
+      "allowToChangeInstallationDirectory": true,
+      "createDesktopShortcut": true,
+      "createStartMenuShortcut": true,
+      "shortcutName": "Maluti Fruit Loan App"
+    },
+    "portable": {
+      "artifactName": "Maluti-Fruit-Loan-App-Portable-${version}.exe"
+    }
   },
   "devDependencies": {
-    "electron": "^31.7.4"
+    "electron": "^31.7.4",
+    "electron-builder": "^24.13.3"
   }
 }
