@@ -3,7 +3,7 @@
 // then its own js/<page>.js, which defines renderPage() and calls render().
 // In the desktop app, use Electron dialogs so inputs keep working after alert/confirm.
 if(window.desktopDialog){window.alert=desktopDialog.alert;window.confirm=desktopDialog.confirm}
-const APP_VERSION='26.8';
+const APP_VERSION='26.9';
 const KEY='loanReconDataV5';
 const SETTINGS_KEY='loanAppSettingsV2601',ADMIN_KEY='loanAppAdminSessionV2601';
 const PAGES=[['index','Dashboard'],['employees','Employees'],['loans','Loans'],['loan-types','Loan Types'],['transactions','Transactions'],['loan-payments','Loan Payments'],['agreement','Agreement'],['imports','Data Import'],['reports','Reports'],['settings','Settings'],['audit','Audit Trail'],['backup','Backup']];

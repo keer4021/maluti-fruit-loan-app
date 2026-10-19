@@ -89,7 +89,7 @@ function renderBulkPayment(){
   let loans=bulkLoans();
   bulkPaymentCard.classList.toggle('hide',!payEmployee.value);
   bulkPaymentTitle.textContent=`Bulk Payment - ${payEmployee.value}`;
-  bulkRows.innerHTML=loans.length?loans.map(loan=>{let bal=loanBalance(loan),def=Math.min(Number(loan.payment)||0,bal);return `<tr><td>${esc(loan.applicationNo||'')}</td><td>${esc(loan.type||'Loan')}</td><td>${money(loan.payment)}</td><td>${money(bal)}</td><td><input class="bulkAmount" data-loan="${loan.id}" type="number" min="0" step="0.01" value="${def>0?def.toFixed(2):''}"></td><td class="bulkAfter"></td></tr>`}).join(''):'<tr><td colspan="6" class="empty">This employee has no open loans.</td></tr>';
+  bulkRows.innerHTML=loans.length?loans.map(loan=>{let bal=loanBalance(loan),def=Math.min(Number(loan.payment)||0,bal);return `<tr><td>${esc(loan.applicationNo||'')}</td><td>${esc(loan.type||'Loan')}</td><td>${money(loan.payment)}</td><td>${money(bal)}</td><td><input class="bulkDate" type="date" value="${esc(bulkDate.value)}"></td><td><input class="bulkAmount" data-loan="${loan.id}" type="number" min="0" step="0.01" value="${def>0?def.toFixed(2):''}"></td><td class="bulkAfter"></td></tr>`}).join(''):'<tr><td colspan="7" class="empty">This employee has no open loans.</td></tr>';
   bulkRows.querySelectorAll('.bulkAmount').forEach(input=>input.oninput=updateBulkTotals);
   updateBulkTotals();
 }
@@ -99,6 +99,7 @@ function updateBulkTotals(){
   bulkSum.textContent=money(sum);
 }
 function setBulkStatus(text,cls){bulkStatus.textContent=text;bulkStatus.className=cls}
+bulkDate.onchange=()=>bulkRows.querySelectorAll('.bulkDate').forEach(input=>input.value=bulkDate.value);
 bulkFillMonthly.onclick=()=>{renderBulkPayment();setBulkStatus('','muted')};
 bulkClear.onclick=()=>{bulkRows.querySelectorAll('.bulkAmount').forEach(input=>input.value='');bulkTotal.value='';updateBulkTotals();setBulkStatus('','muted')};
 bulkAllocate.onclick=()=>{
@@ -109,19 +110,19 @@ bulkAllocate.onclick=()=>{
   setBulkStatus(remaining>.005?`Allocated. ${money(remaining)} exceeds the total outstanding and was not allocated.`:'Allocated oldest loan first.',remaining>.005?'warn pill':'muted');
 };
 postBulkPayment.onclick=()=>{
-  let date=bulkDate.value,source=bulkSource.value,note=bulkNote.value.trim(),items=[];
-  if(!date){setBulkStatus('Enter a payment date.','bad pill');return}
+  let source=bulkSource.value,note=bulkNote.value.trim(),items=[];
   for(let input of bulkRows.querySelectorAll('.bulkAmount')){
-    let loan=db.loans.find(l=>l.id===input.dataset.loan),amount=Number(input.value)||0;
+    let loan=db.loans.find(l=>l.id===input.dataset.loan),amount=Number(input.value)||0,date=input.closest('tr').querySelector('.bulkDate').value;
     if(amount<0){setBulkStatus('Amounts cannot be negative.','bad pill');return}
     if(amount>loanBalance(loan)+.005){setBulkStatus(`Amount for loan ${loan.applicationNo} cannot be greater than the outstanding balance of ${money(loanBalance(loan))}.`,'bad pill');return}
-    if(amount>0)items.push({loan,amount});
+    if(amount>0&&!date){setBulkStatus(`Enter a payment date for loan ${loan.applicationNo}.`,'bad pill');return}
+    if(amount>0)items.push({loan,amount,date});
   }
   if(!items.length){setBulkStatus('Enter at least one amount.','bad pill');return}
   let total=items.reduce((s,i)=>s+i.amount,0);
   if(!confirm(`Post ${items.length} ${source} payment(s) totalling ${money(total)} for employee ${payEmployee.value}?`))return;
   let now=new Date().toISOString();
-  items.forEach(({loan,amount})=>{let balanceAfter=Math.max(0,loanBalance(loan)-amount);loan.repayments.push({id:crypto.randomUUID(),date,period:date.slice(0,7),amount,source,note,balanceAfter,postedAt:now});normaliseLoanStatus(loan)});
+  items.forEach(({loan,amount,date})=>{loan.repayments.push({id:crypto.randomUUID(),date,period:date.slice(0,7),amount,source,note,balanceAfter:0,postedAt:now});recalcLoanBalances(loan);normaliseLoanStatus(loan)});
   save();
   bulkTotal.value='';bulkNote.value='';
   renderPaymentLoans();renderPaymentHistory();renderBulkPayment();
