@@ -1,6 +1,6 @@
 {
   "name": "maluti-fruit-loan-app",
-  "version": "1.0.0",
+  "version": "26.12.0",
   "description": "Maluti Fruit Loan App desktop application",
   "main": "main.js",
   "scripts": {
@@ -16,6 +16,7 @@
     "files": [
       "main.js",
       "preload.js",
+      "build/icon.png",
       "pages/**/*",
       "js/**/*",
       "css/**/*",
@@ -23,11 +24,12 @@
       "vendor/**/*"
     ],
     "directories": {
-      "output": "C:/Projekte/Maluti Fruit Loan App"
+      "output": "dist"
     },
     "win": {
       "target": ["nsis", "portable"],
-      "signAndEditExecutable": false
+      "icon": "build/icon.ico",
+      "signAndEditExecutable": true
     },
     "nsis": {
       "oneClick": true,

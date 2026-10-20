@@ -3,7 +3,7 @@
 // then its own js/<page>.js, which defines renderPage() and calls render().
 // In the desktop app, use Electron dialogs so inputs keep working after alert/confirm.
 if(window.desktopDialog){window.alert=desktopDialog.alert;window.confirm=desktopDialog.confirm}
-const APP_VERSION='26.9';
+const APP_VERSION='26.12';
 const KEY='loanReconDataV5';
 const SETTINGS_KEY='loanAppSettingsV2601',ADMIN_KEY='loanAppAdminSessionV2601';
 const PAGES=[['index','Dashboard'],['employees','Employees'],['loans','Loans'],['loan-types','Loan Types'],['transactions','Transactions'],['loan-payments','Loan Payments'],['agreement','Agreement'],['imports','Data Import'],['reports','Reports'],['settings','Settings'],['audit','Audit Trail'],['backup','Backup']];
@@ -27,6 +27,8 @@ function load(){try{let d=JSON.parse(localStorage.getItem(KEY));return d?addEmpl
 let db=load();
 // Every loan carries its own repayment list.
 if(db.loans.some(loan=>!Array.isArray(loan.repayments))){db.loans.forEach(loan=>{if(!Array.isArray(loan.repayments))loan.repayments=[]});localStorage.setItem(KEY,JSON.stringify(db))}
+// Existing reversals take the date of the payment they reverse.
+if(!localStorage.getItem('loanReconDataV5-reversal-dates-20261020')){db.loans.forEach(loan=>loan.repayments.forEach(r=>{let o=r.reversalOf&&loan.repayments.find(p=>p.id===r.reversalOf);if(o&&o.date){r.date=o.date;r.period=o.period||o.date.slice(0,7)}}));localStorage.setItem(KEY,JSON.stringify(db));localStorage.setItem('loanReconDataV5-reversal-dates-20261020','yes')}
 // ---------- Audit trail ----------
 // Every save() is compared with the previously saved data and the differences are logged.
 const AUDIT_KEY='loanAppAuditTrailV1',AUDIT_MAX=10000;
