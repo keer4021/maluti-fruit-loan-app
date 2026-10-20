@@ -103,6 +103,11 @@ function pageParam(name){return new URLSearchParams(location.search).get(name)||
 function loanPaidTotal(loan){return (loan.repayments||[]).reduce((sum,item)=>sum+(Number(item.amount)||0),0)}
 function loanBalance(loan){return Math.max(0,(Number(loan.amount)||0)-loanPaidTotal(loan))}
 function loanStatus(loan){if(loan.status==='Cancelled')return 'Cancelled';let paid=loanPaidTotal(loan),balance=loanBalance(loan);return balance<=.01?'Fully Paid':paid>.005?'Partial Paid':'New'}
+function recalcLoanBalances(loan){
+  let entries=(loan.repayments||[]).slice().sort((a,b)=>String(a.date||a.postedAt||'').localeCompare(String(b.date||b.postedAt||'')));
+  let running=Number(loan.amount)||0;
+  entries.forEach(item=>{running-=(Number(item.amount)||0);item.balanceAfter=Math.max(0,running)});
+}
 // Stores the derived status on the loan; returns true when it changed.
 function normaliseLoanStatus(loan){
   if(loan.status==='Cancelled')return false;
@@ -139,6 +144,7 @@ function createBackupAndMark(onDone){
 }
 
 // ---------- Payment history modal (Loans, Transactions, Loan Payments) ----------
+let pendingPaymentReversal=null;
 function ensurePaymentModal(){
   if(document.getElementById('paymentHistoryModal'))return;
   let modal=document.createElement('div');
@@ -147,6 +153,29 @@ function ensurePaymentModal(){
   modal.innerHTML='<div class="payment-history-panel"><div class="admin-banner"><h2 id="paymentHistoryTitle">Payment History</h2><button class="btn" type="button" id="closePaymentHistory">Close</button></div><p class="muted" id="paymentHistoryNote"></p><div class="tablebox"><table><thead><tr><th>Date</th><th>Period</th><th>Source</th><th>Amount</th><th>Balance After</th><th>Note</th><th>Action</th></tr></thead><tbody id="paymentHistoryRows"></tbody></table></div></div>';
   document.body.appendChild(modal);
   closePaymentHistory.onclick=()=>paymentHistoryModal.classList.add('hide');
+  let reversalModal=document.createElement('div');
+  reversalModal.id='paymentReversalModal';
+  reversalModal.className='payment-history-modal hide';
+  reversalModal.innerHTML='<form class="payment-history-panel" id="paymentReversalForm"><h2>Reverse Payment</h2><p class="muted">Choose the date the reversal took place. This date will be used in payment history and reports.</p><label for="paymentReversalDate">Reversal Date *</label><input id="paymentReversalDate" type="date" required><div class="actions"><button class="btn" type="button" id="cancelPaymentReversal">Cancel</button><button class="btn danger" type="submit">Reverse Payment</button></div><p id="paymentReversalStatus" class="muted"></p></form>';
+  document.body.appendChild(reversalModal);
+  cancelPaymentReversal.onclick=()=>{reversalModal.classList.add('hide');pendingPaymentReversal=null};
+  paymentReversalForm.onsubmit=event=>{
+    event.preventDefault();
+    let date=paymentReversalDate.value;
+    if(!date){paymentReversalStatus.textContent='Choose a reversal date.';paymentReversalStatus.className='bad pill';return}
+    let {loanId,paymentId}=pendingPaymentReversal||{};
+    let loan=db.loans.find(l=>l.id===loanId),item=loan&&(loan.repayments||[]).find(p=>p.id===paymentId);
+    if(!loan||!item){paymentReversalStatus.textContent='This payment could not be found.';paymentReversalStatus.className='bad pill';return}
+    if(!confirm(`Reverse payment of ${money(item.amount)} on loan ${loan.applicationNo} dated ${date}?`))return;
+    let newBalance=loanBalance(loan)+(Number(item.amount)||0);
+    loan.repayments.push({id:crypto.randomUUID(),date,period:date.slice(0,7),amount:-(Number(item.amount)||0),source:'Reversal',note:`Reversal of payment ${item.date||item.period||paymentId}`,balanceAfter:newBalance,reversalOf:item.id,postedAt:new Date().toISOString()});
+    recalcLoanBalances(loan);
+    normaliseLoanStatus(loan);
+    save();
+    reversalModal.classList.add('hide');
+    pendingPaymentReversal=null;
+    showLoanPaymentHistory(loanId);
+  };
 }
 // Reversal state of one repayment: already reversed, a reversal itself, or still reversible.
 function paymentState(loan,item){
@@ -170,12 +199,13 @@ function reverseLoanPayment(loanId,paymentId){
   if(!isAdmin()){alert('Login as admin in Settings before reversing a payment.');return}
   let loan=db.loans.find(l=>l.id===loanId),item=loan&&(loan.repayments||[]).find(p=>p.id===paymentId);
   if(!loan||!item)return;
-  if(!confirm(`Reverse payment of ${money(item.amount)} on loan ${loan.applicationNo}?`))return;
-  let today=localToday(),newBalance=loanBalance(loan)+(Number(item.amount)||0);
-  loan.repayments.push({id:crypto.randomUUID(),date:today,period:today.slice(0,7),amount:-(Number(item.amount)||0),source:'Reversal',note:`Reversal of payment ${item.date||item.period||paymentId}`,balanceAfter:newBalance,reversalOf:item.id,postedAt:new Date().toISOString()});
-  loan.status=loanStatus(loan);
-  save();
-  showLoanPaymentHistory(loanId);
+  ensurePaymentModal();
+  pendingPaymentReversal={loanId,paymentId};
+  paymentReversalDate.value=localToday();
+  paymentReversalStatus.textContent='';
+  paymentReversalStatus.className='muted';
+  paymentReversalModal.classList.remove('hide');
+  paymentReversalDate.focus();
 }
 // Button that opens the payment history for one loan.
 const paymentsButton=loan=>`<button class="btn" type="button" onclick="showLoanPaymentHistory('${loan.id}')">Payments</button>`;

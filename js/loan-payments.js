@@ -1,10 +1,5 @@
 // Loan Payments: post, edit and reverse payments against a specific loan.
 const payEmployee=paymentEmployee,payLoan=paymentLoan,payDate=paymentDate,paySource=paymentSource,payAmount=paymentAmount,payOutstanding=paymentOutstanding,payNote=paymentNote,payStatus=loanPaymentStatus;
-function recalcLoanBalances(loan){
-  let entries=(loan.repayments||[]).slice().sort((a,b)=>String(a.date||a.postedAt||'').localeCompare(String(b.date||b.postedAt||'')));
-  let running=Number(loan.amount)||0;
-  entries.forEach(item=>{running-=(Number(item.amount)||0);item.balanceAfter=Math.max(0,running)});
-}
 function loansForEmployee(employeeNo){
   let selectedLoan=payLoan.value;
   return db.loans.filter(loan=>loan.employeeNo===employeeNo&&loan.status!=='Cancelled'&&(loanBalance(loan)>.005||loan.id===selectedLoan)).sort((a,b)=>String(a.firstPeriod||loanDate(a)).localeCompare(String(b.firstPeriod||loanDate(b)))||String(a.applicationNo||'').localeCompare(String(b.applicationNo||''),undefined,{numeric:true}));
