@@ -145,28 +145,16 @@ printAmortisationReport.onclick=()=>{renderAmortisation();printWith('amortisatio
 amortEmployee.onchange=populateLoanFilters;
 
 // ---------- Monthly loan pack for management ----------
-function monthInLoan(month,loan){
-  if(!month||loan.status==='Cancelled')return false;
-  if(loan.cancelMonth&&month>=loan.cancelMonth)return false;
-  if(loan.firstPeriod&&month<loan.firstPeriod)return false;
-  return loanBalance(loan)>0.005;
-}
-function buildPack(month){
-  let newLoans=db.loans.filter(loan=>monthOf(loanDate(loan))===month).sort((a,b)=>String(a.employeeNo).localeCompare(String(b.employeeNo)));
-  let activeLoans=db.loans.filter(loan=>monthInLoan(month,loan));
-  let payroll=(db.payroll||[]).filter(x=>x.period===month),pastel=(db.pastel||[]).filter(x=>x.period===month),posted=[];
-  db.loans.forEach(loan=>(loan.repayments||[]).filter(item=>monthOf(itemDate(item))===month).forEach(item=>posted.push({loan,item})));
-  let employeeNos=[...new Set([...activeLoans.map(x=>x.employeeNo),...payroll.map(x=>x.employeeNo),...pastel.map(x=>x.employeeNo),...posted.map(x=>x.loan.employeeNo),...newLoans.map(x=>x.employeeNo)])];
-  let sumOf=(list,no,value)=>list.filter(x=>x.employeeNo===no).reduce((s,x)=>s+(Number(value(x))||0),0);
-  let recon=employeeNos.map(no=>({
-    expected:activeLoans.filter(x=>x.employeeNo===no).reduce((s,x)=>s+Math.min(Number(x.payment)||0,loanBalance(x)),0),
-    payroll:sumOf(payroll,no,x=>x.amount),
-    posted:posted.filter(x=>x.loan.employeeNo===no).reduce((s,x)=>s+(Number(x.item.amount)||0),0),
-    pastel:sumOf(pastel,no,x=>x.amount)
-  }));
+function buildPack(from,to){
+  let inRange=date=>{date=String(date||'').slice(0,10);return date>=from&&date<=to};
+  let fromMonth=from.slice(0,7),toMonth=to.slice(0,7),inMonths=period=>period>=fromMonth&&period<=toMonth;
+  let newLoans=db.loans.filter(loan=>inRange(loanDate(loan))).sort((a,b)=>String(a.employeeNo).localeCompare(String(b.employeeNo))||String(loanDate(a)).localeCompare(String(loanDate(b))));
+  let payroll=(db.payroll||[]).filter(x=>inMonths(x.period)),pastel=(db.pastel||[]).filter(x=>inMonths(x.period)),posted=[];
+  db.loans.forEach(loan=>(loan.repayments||[]).filter(item=>inRange(itemDate(item))).forEach(item=>posted.push({loan,item})));
+  let total=(list,value)=>list.reduce((s,x)=>s+(Number(value(x))||0),0);
   let outstanding=db.loans.filter(loan=>loanBalance(loan)>0.005&&loan.status!=='Cancelled').sort((a,b)=>String(a.employeeNo).localeCompare(String(b.employeeNo)));
-  let summary={newLoanTotal:newLoans.reduce((s,x)=>s+(Number(x.amount)||0),0),payrollTotal:recon.reduce((s,x)=>s+x.payroll,0),postedTotal:recon.reduce((s,x)=>s+x.posted,0),pastelTotal:recon.reduce((s,x)=>s+x.pastel,0),outstandingTotal:outstanding.reduce((s,x)=>s+loanBalance(x),0)};
-  return{month,newLoans,outstanding,summary};
+  let summary={newLoanTotal:total(newLoans,x=>x.amount),payrollTotal:total(payroll,x=>x.amount),postedTotal:total(posted,x=>x.item.amount),pastelTotal:total(pastel,x=>x.amount),outstandingTotal:outstanding.reduce((s,x)=>s+loanBalance(x),0)};
+  return{from,to,newLoans,outstanding,summary};
 }
 function groupedOutstanding(loans){
   let groups=new Map(),result='';
@@ -206,12 +194,13 @@ function styleMonthlyLoanPack(pack){
   section.append(signoff);
 }
 function renderPack(){
-  let month=payrollReconMonth.value;
-  if(!month){payrollPackStatus.textContent='Choose a payroll month first.';payrollPackStatus.className='bad pill';return null}
-  let pack=buildPack(month),[year,mon]=month.split('-').map(Number);
-  updateLoanReportHeader('month',month+'-01',month+'-'+new Date(year,mon,0).getDate(),'All Employees');
-  payrollPackStatus.textContent='Report ready for '+month+'.';payrollPackStatus.className='good pill';
-  payrollNewLoanRows.innerHTML=pack.newLoans.length?pack.newLoans.map(loan=>`<tr><td><b>${esc(loan.employeeNo)}</b><br><span class="muted">${esc(loan.employeeName)}</span></td><td>${esc(loan.applicationNo||'')}</td><td>${esc(loanDate(loan))}</td><td>${esc(loan.type||'Loan')}</td><td>${esc(loan.notes||'')}</td><td>${money(loan.amount)}</td><td>${money(loan.payment)}</td></tr>`).join(''):'<tr><td colspan="7" class="empty">No new loans for this month.</td></tr>';
+  let from=payrollReconFrom.value,to=payrollReconTo.value;
+  if(!from||!to){payrollPackStatus.textContent='Choose a date from and date to first.';payrollPackStatus.className='bad pill';return null}
+  if(from>to){payrollPackStatus.textContent='Date from must be on or before date to.';payrollPackStatus.className='bad pill';return null}
+  let pack=buildPack(from,to);
+  updateLoanReportHeader('month',from,to,'All Employees');
+  payrollPackStatus.textContent='Report ready for '+from+' to '+to+'.';payrollPackStatus.className='good pill';
+  payrollNewLoanRows.innerHTML=pack.newLoans.length?pack.newLoans.map(loan=>`<tr><td><b>${esc(loan.employeeNo)}</b><br><span class="muted">${esc(loan.employeeName)}</span></td><td>${esc(loan.applicationNo||'')}</td><td>${esc(loanDate(loan))}</td><td>${esc(loan.type||'Loan')}</td><td>${esc(loan.notes||'')}</td><td>${money(loan.amount)}</td><td>${money(loan.payment)}</td></tr>`).join(''):'<tr><td colspan="7" class="empty">No new loans in this period.</td></tr>';
   styleMonthlyLoanPack(pack);
   return pack;
 }
@@ -221,7 +210,7 @@ function exportPackCsv(){
   pack.newLoans.forEach(loan=>rows.push(['NEW_LOAN',loan.employeeNo,loan.employeeName,loan.applicationNo||'',loanDate(loan),loan.type||'Loan',loan.notes||'',loan.payment||0,'','',loan.amount||0,loanPaidTotal(loan),loanBalance(loan),loan.status||'']));
   pack.outstanding.forEach(loan=>rows.push(['OUTSTANDING_BALANCE',loan.employeeNo,loan.employeeName,loan.applicationNo||'',loanDate(loan),loan.type||'Loan',loan.notes||'','','','',loan.amount||0,loanPaidTotal(loan),loanBalance(loan),loan.status||'']));
   rows.push(['SUMMARY','','','','','','','',pack.summary.payrollTotal,pack.summary.postedTotal,pack.summary.newLoanTotal,'',pack.summary.outstandingTotal,'']);
-  download('monthly-loan-pack-'+pack.month+'.csv',csvText(rows),'text/csv');
+  download('monthly-loan-pack-'+pack.from+'-to-'+pack.to+'.csv',csvText(rows),'text/csv');
 }
 runPayrollReconPack.onclick=renderPack;
 exportPayrollReconPackCsv.onclick=exportPackCsv;
@@ -258,6 +247,7 @@ function renderPage(){
   refillSelect(paymentReportEmployee,employeeSelectOptions());
   populateLoanFilters();
 }
-payrollReconMonth.value=localToday().slice(0,7);
+payrollReconFrom.value=localToday().slice(0,8)+'01';
+payrollReconTo.value=localToday();
 setReportView('payroll');
 render();
