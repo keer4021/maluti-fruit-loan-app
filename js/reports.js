@@ -234,14 +234,21 @@ function instalmentInRange(loan,from,to,first){
 }
 function buildLoanVsPayroll(from,to){
   let lines=db.loans.filter(loan=>loan.status!=='Cancelled'&&loanDate(loan)&&loanDate(loan)<=to).map(loan=>{
-    let amount=Number(loan.amount)||0,paid=Math.min(amount,loanPaidUpTo(loan,to)),balance=Math.max(0,amount-paid);
+    // Already paid = payments before the period; the period instalment is then
+    // deducted to give the balance at the end of this period.
+    let amount=Number(loan.amount)||0,paid=Math.min(amount,(loan.repayments||[]).filter(p=>{let d=String(itemDate(p)).slice(0,10);return d&&d<from}).reduce((s,p)=>s+(Number(p.amount)||0),0));
     let first=loan.firstPeriod||monthOf(loanDate(loan)),paidMonths=(loan.repayments||[]).filter(p=>{let d=String(itemDate(p)).slice(0,10);return d&&d<=to}).map(p=>monthOf(p.period||itemDate(p))).sort();
     // A loan stays "new" until its first instalment month has been deducted.
     let isNew=!paidMonths.length&&monthOf(to)<=first;
-    return{loan,amount,isNew,paid,instalment:instalmentInRange(loan,from,to,first),balance};
+    let instalment=instalmentInRange(loan,from,to,first);
+    return{loan,amount,isNew,paid,instalment,endBalance:Math.max(0,amount-paid-instalment)};
   }).sort((a,b)=>String(a.loan.applicationNo||'').localeCompare(String(b.loan.applicationNo||''),undefined,{numeric:true})||String(loanDate(a.loan)).localeCompare(String(loanDate(b.loan))));
-  let sum=(list,f)=>list.reduce((s,x)=>s+f(x),0),settled=lines.filter(x=>x.balance<=0.005),open=lines.filter(x=>x.balance>0.005),newLoans=lines.filter(x=>x.isNew);
-  return{from,to,lines:open,summary:{total:[lines.length,sum(lines,x=>x.amount)],settled:[settled.length,sum(settled,x=>x.amount)],open:[open.length,sum(open,x=>x.balance)],newLoans:[newLoans.length,sum(newLoans,x=>x.amount)],instalment:sum(open,x=>x.instalment),paid:sum(open,x=>x.paid)}};
+  let sum=(list,f)=>list.reduce((s,x)=>s+f(x),0),settled=lines.filter(x=>x.endBalance<=0.005),open=lines.filter(x=>x.endBalance>0.005),newLoans=lines.filter(x=>x.isNew);
+  // Detail shows every loan still (partly) owed at the start of the period,
+  // including loans that the period instalment pays off.
+  let detail=lines.filter(x=>x.amount-x.paid>0.005);
+  // Detail totals tie out: loan amount = already paid + instalments + balance at end.
+  return{from,to,lines:detail,summary:{detail:[detail.length,sum(detail,x=>x.amount)],total:[lines.length,sum(lines,x=>x.amount)],settled:[settled.length,sum(settled,x=>x.amount)],open:[open.length,sum(open,x=>x.endBalance)],newLoans:[newLoans.length,sum(newLoans,x=>x.amount)],instalment:sum(detail,x=>x.instalment),paid:sum(detail,x=>x.paid)}};
 }
 function renderLoanVsPayroll(){
   let from=lvpFrom.value,to=lvpTo.value;
@@ -250,15 +257,15 @@ function renderLoanVsPayroll(){
   let report=buildLoanVsPayroll(from,to),x=report.summary;
   updateLoanReportHeader('loanpayroll',from,to,'All Employees');
   lvpStatus.textContent='Report ready for '+from+' to '+to+'.';lvpStatus.className='good pill';
-  lvpKpis.innerHTML=[['Total loans',x.total[0]+' loans · '+money(x.total[1])],['Loans with 0 balance',x.settled[0]+' loans · '+money(x.settled[1])],['Loans with balance',x.open[0]+' loans · '+money(x.open[1])],['New loans',x.newLoans[0]+' loans · '+money(x.newLoans[1])],['Instalments payable in period',money(x.instalment)]].map(([label,value])=>`<div class="recon-kpi"><span>${label}</span><b style="white-space:pre-line">${value}</b></div>`).join('');
-  lvpRows.innerHTML=report.lines.length?report.lines.map(l=>`<tr><td><b>${esc(l.loan.employeeNo)}</b><br><span class="muted">${esc(l.loan.employeeName)}</span></td><td>${esc(l.loan.applicationNo||'')}</td><td>${esc(loanDate(l.loan))}${l.isNew?' <span class="pill good">New</span>':''}</td><td>${esc(l.loan.type||'Loan')}</td><td class="num">${money(l.amount)}</td><td class="num">${money(l.paid)}</td><td class="num">${money(l.instalment)}</td><td class="num">${money(l.balance)}</td></tr>`).join('')
-    +`<tr class="report-total"><td colspan="4">TOTAL</td><td class="num">${money(report.lines.reduce((s,l)=>s+l.amount,0))}</td><td class="num">${money(x.paid)}</td><td class="num">${money(x.instalment)}</td><td class="num">${money(x.open[1])}</td></tr>`
-    :'<tr><td colspan="8" class="empty">No loans with a balance at the end of the selected dates.</td></tr>';
+  lvpKpis.innerHTML=[['Total loans',x.total[0]+' loans · '+money(x.total[1])],['Loans with 0 balance',x.settled[0]+' loans · '+money(x.settled[1])],['Loans at start of period',x.detail[0]+' loans · '+money(x.detail[1])],['New loans',x.newLoans[0]+' loans · '+money(x.newLoans[1])],['Instalments payable in period',money(x.instalment)],['Loans at end of period',x.open[0]+' loans · '+money(x.open[1])]].map(([label,value])=>`<div class="recon-kpi"><span>${label}</span><b style="white-space:pre-line">${value}</b></div>`).join('');
+  lvpRows.innerHTML=report.lines.length?report.lines.map(l=>`<tr><td><b>${esc(l.loan.employeeNo)}</b><br><span class="muted">${esc(l.loan.employeeName)}</span></td><td>${esc(l.loan.applicationNo||'')}</td><td>${esc(loanDate(l.loan))}${l.isNew?' <span class="pill good">New</span>':''}</td><td>${esc(l.loan.type||'Loan')}</td><td class="num">${money(l.amount)}</td><td class="num">${money(l.paid)}</td><td class="num">${money(l.instalment)}</td><td class="num">${money(l.endBalance)}</td></tr>`).join('')
+    +`<tr class="report-total"><td colspan="4">TOTAL</td><td class="num">${money(x.detail[1])}</td><td class="num">${money(x.paid)}</td><td class="num">${money(x.instalment)}</td><td class="num">${money(x.open[1])}</td></tr>`
+    :'<tr><td colspan="8" class="empty">No loans with a balance owing in the selected dates.</td></tr>';
   return report;
 }
 function exportLoanVsPayroll(){
   let report=renderLoanVsPayroll();if(!report)return;
-  download('loan-vs-payroll-'+report.from+'-to-'+report.to+'.csv',csvText([['employee_number','employee_name','loan_number','loan_date','loan_type','new_in_range','loan_amount','already_paid','instalment_payable_in_period','balance_at_end'],...report.lines.map(l=>[l.loan.employeeNo,l.loan.employeeName,l.loan.applicationNo||'',loanDate(l.loan),l.loan.type||'Loan',l.isNew?'YES':'NO',l.amount,l.paid,l.instalment,l.balance])]),'text/csv');
+  download('loan-vs-payroll-'+report.from+'-to-'+report.to+'.csv',csvText([['employee_number','employee_name','loan_number','loan_date','loan_type','new_in_range','loan_amount','already_paid','instalment_payable_in_period','balance_at_end_of_this_period'],...report.lines.map(l=>[l.loan.employeeNo,l.loan.employeeName,l.loan.applicationNo||'',loanDate(l.loan),l.loan.type||'Loan',l.isNew?'YES':'NO',l.amount,l.paid,l.instalment,l.endBalance])]),'text/csv');
 }
 runLoanVsPayroll.onclick=renderLoanVsPayroll;
 exportLoanVsPayrollCsv.onclick=exportLoanVsPayroll;
