@@ -1,4 +1,4 @@
-// Reports: monthly loan pack, loan history, payment history, amortisation
+// Reports: monthly loan pack, loan vs payroll, loan history, payment history, amortisation
 // schedule, summary by loan type and a raw CSV export of all data.
 {let style=document.createElement('style');style.textContent=window.loanReportCss;document.head.append(style)}
 const monthOf=value=>String(value||'').slice(0,7);
@@ -12,7 +12,7 @@ function printWith(kind){
 }
 
 // ---------- Report heading (title, generated time, employee, date range) ----------
-const REPORT_HEADINGS={history:['.history-report-card','Employee Loan History','Review each employee loan, repayments and outstanding balances for the selected period.'],payments:['.payment-history-report-card','Payment History','Review every payment posted against loans, per employee or across all employees.'],summary:['.summary-report-card','Summary by Loan Type','Compare original loan values, repayments and current balances by loan category.'],month:['.management-report-card','Monthly Loan Pack','Use this pack to check new loans, payroll deductions, posted payments, Pastel totals and exceptions.'],amortisation:['.amortisation-report-card','Amortisation Schedule','Follow the planned instalment, paid amount and remaining balance for each loan month by month.']};
+const REPORT_HEADINGS={history:['.history-report-card','Employee Loan History','Review each employee loan, repayments and outstanding balances for the selected period.'],payments:['.payment-history-report-card','Payment History','Review every payment posted against loans, per employee or across all employees.'],summary:['.summary-report-card','Summary by Loan Type','Compare original loan values, repayments and current balances by loan category.'],month:['.management-report-card','Monthly Loan Pack','Use this pack to check new loans, payroll deductions, posted payments, Pastel totals and exceptions.'],amortisation:['.amortisation-report-card','Amortisation Schedule','Follow the planned instalment, paid amount and remaining balance for each loan month by month.'],loanpayroll:['.loan-vs-payroll-card','Loan vs Payroll','Loans active in the period, new loans, instalments and payroll deductions, with each balance at the end of the date range.']};
 function updateLoanReportHeader(kind,from,to,employee){
   const [selector,title,purpose]=REPORT_HEADINGS[kind],card=document.querySelector(selector);
   card.classList.add('report-sheet');
@@ -27,12 +27,13 @@ function updateLoanReportHeader(kind,from,to,employee){
   const generated=new Date().toLocaleString('en-GB',{timeZone:'Africa/Johannesburg',day:'2-digit',month:'short',year:'numeric',hour:'2-digit',minute:'2-digit',second:'2-digit'});
   let meta=[['Report',title],['Generated (SAST)',generated],['Employee',employee],['Date range',(from||'Beginning of records')+' to '+(to||'Latest records')]];
   if(kind==='month')meta.push(['Balance basis','Current recorded balance']);
+  if(kind==='loanpayroll')meta.push(['Balance basis','Balance at end of date range']);
   for(const [label,value] of meta){let row=document.createElement('div'),b=document.createElement('b');b.textContent=label;row.append(b,document.createTextNode(value));heading.querySelector('.report-meta').append(row)}
 }
 
 // ---------- Report picker ----------
-const REPORT_CARDS='.history-report-card,.payment-history-report-card,.summary-report-card,.management-report-card,.amortisation-report-card';
-const REPORT_VIEWS={history:['.history-report-card','Shows loan history by employee or all employees, with date filters.'],payments:['.payment-history-report-card','Shows every payment posted to loans, with employee, loan, source, date and balance after payment.'],summary:['.summary-report-card','Shows totals by loan type: original loans, paid and outstanding.'],payroll:['.management-report-card','Monthly management pack for new loans, deductions and outstanding balances.'],amortisation:['.amortisation-report-card','Shows the repayment schedule per employee and loan number.'],raw:['','Exports all stored app data to CSV for Excel checking or backup review.'],all:[REPORT_CARDS,'Shows all report sections on one page.']};
+const REPORT_CARDS='.loan-vs-payroll-card,.history-report-card,.payment-history-report-card,.summary-report-card,.management-report-card,.amortisation-report-card';
+const REPORT_VIEWS={history:['.history-report-card','Shows loan history by employee or all employees, with date filters.'],payments:['.payment-history-report-card','Shows every payment posted to loans, with employee, loan, source, date and balance after payment.'],summary:['.summary-report-card','Shows totals by loan type: original loans, paid and outstanding.'],payroll:['.management-report-card','Monthly management pack for new loans, deductions and outstanding balances.'],amortisation:['.amortisation-report-card','Shows the repayment schedule per employee and loan number.'],loanpayroll:['.loan-vs-payroll-card','Summary of total loans, settled loans, loans with balance, new loans and instalments vs payroll, with each loan balance at the end of the date range.'],raw:['','Exports all stored app data to CSV for Excel checking or backup review.'],all:[REPORT_CARDS,'Shows all report sections on one page.']};
 function setReportView(value){
   let [selector,note]=REPORT_VIEWS[value]||['',''];
   recon.querySelectorAll(REPORT_CARDS).forEach(card=>card.style.display='none');
@@ -61,6 +62,7 @@ openSelectedReport.onclick=()=>{
   if(value==='payments')renderPaymentHistoryReport();
   if(value==='amortisation')renderAmortisation();
   if(value==='summary')runSummary();
+  if(value==='loanpayroll')renderLoanVsPayroll();
 };
 exportRawAllDataCsv.onclick=exportRawData;
 
@@ -216,6 +218,52 @@ runPayrollReconPack.onclick=renderPack;
 exportPayrollReconPackCsv.onclick=exportPackCsv;
 printPayrollReconPack.onclick=()=>{if(renderPack())printWith('payroll-pack')};
 
+// ---------- Loan vs payroll ----------
+// Balances are worked out as at the end of the date range (payments dated after
+// "to" are ignored). Every loan from the first loan up to the range end is
+// included, new loans in the range too.
+function loanPaidUpTo(loan,date){return (loan.repayments||[]).filter(p=>{let d=String(itemDate(p)).slice(0,10);return d&&d<=date}).reduce((s,p)=>s+(Number(p.amount)||0),0)}
+const monthsBetween=(a,b)=>{let [ay,am]=a.split('-').map(Number),[by,bm]=b.split('-').map(Number);return Math.max(0,(by-ay)*12+(bm-am)+1)};
+// Instalments payable in the date range: one instalment per month from the
+// first deduction month (or range start) to the range end, capped at the
+// balance owed at the start of the range.
+function instalmentInRange(loan,from,to,first){
+  let amount=Number(loan.amount)||0,opening=Math.max(0,amount-(loan.repayments||[]).filter(p=>{let d=String(itemDate(p)).slice(0,10);return d&&d<from}).reduce((s,p)=>s+(Number(p.amount)||0),0));
+  let start=first>monthOf(from)?first:monthOf(from);
+  return Math.min(opening,(Number(loan.payment)||0)*monthsBetween(start,monthOf(to)));
+}
+function buildLoanVsPayroll(from,to){
+  let lines=db.loans.filter(loan=>loan.status!=='Cancelled'&&loanDate(loan)&&loanDate(loan)<=to).map(loan=>{
+    let amount=Number(loan.amount)||0,paid=Math.min(amount,loanPaidUpTo(loan,to)),balance=Math.max(0,amount-paid);
+    let first=loan.firstPeriod||monthOf(loanDate(loan)),paidMonths=(loan.repayments||[]).filter(p=>{let d=String(itemDate(p)).slice(0,10);return d&&d<=to}).map(p=>monthOf(p.period||itemDate(p))).sort();
+    // A loan stays "new" until its first instalment month has been deducted.
+    let isNew=!paidMonths.length&&monthOf(to)<=first;
+    return{loan,amount,isNew,paid,instalment:instalmentInRange(loan,from,to,first),balance};
+  }).sort((a,b)=>String(a.loan.applicationNo||'').localeCompare(String(b.loan.applicationNo||''),undefined,{numeric:true})||String(loanDate(a.loan)).localeCompare(String(loanDate(b.loan))));
+  let sum=(list,f)=>list.reduce((s,x)=>s+f(x),0),settled=lines.filter(x=>x.balance<=0.005),open=lines.filter(x=>x.balance>0.005),newLoans=lines.filter(x=>x.isNew);
+  return{from,to,lines:open,summary:{total:[lines.length,sum(lines,x=>x.amount)],settled:[settled.length,sum(settled,x=>x.amount)],open:[open.length,sum(open,x=>x.balance)],newLoans:[newLoans.length,sum(newLoans,x=>x.amount)],instalment:sum(open,x=>x.instalment),paid:sum(open,x=>x.paid)}};
+}
+function renderLoanVsPayroll(){
+  let from=lvpFrom.value,to=lvpTo.value;
+  if(!from||!to){lvpStatus.textContent='Choose a date from and date to first.';lvpStatus.className='bad pill';return null}
+  if(from>to){lvpStatus.textContent='Date from must be on or before date to.';lvpStatus.className='bad pill';return null}
+  let report=buildLoanVsPayroll(from,to),x=report.summary;
+  updateLoanReportHeader('loanpayroll',from,to,'All Employees');
+  lvpStatus.textContent='Report ready for '+from+' to '+to+'.';lvpStatus.className='good pill';
+  lvpKpis.innerHTML=[['Total loans',x.total[0]+' loans · '+money(x.total[1])],['Loans with 0 balance',x.settled[0]+' loans · '+money(x.settled[1])],['Loans with balance',x.open[0]+' loans · '+money(x.open[1])],['New loans',x.newLoans[0]+' loans · '+money(x.newLoans[1])],['Instalments payable in period',money(x.instalment)]].map(([label,value])=>`<div class="recon-kpi"><span>${label}</span><b style="white-space:pre-line">${value}</b></div>`).join('');
+  lvpRows.innerHTML=report.lines.length?report.lines.map(l=>`<tr><td><b>${esc(l.loan.employeeNo)}</b><br><span class="muted">${esc(l.loan.employeeName)}</span></td><td>${esc(l.loan.applicationNo||'')}</td><td>${esc(loanDate(l.loan))}${l.isNew?' <span class="pill good">New</span>':''}</td><td>${esc(l.loan.type||'Loan')}</td><td class="num">${money(l.amount)}</td><td class="num">${money(l.paid)}</td><td class="num">${money(l.instalment)}</td><td class="num">${money(l.balance)}</td></tr>`).join('')
+    +`<tr class="report-total"><td colspan="4">TOTAL</td><td class="num">${money(report.lines.reduce((s,l)=>s+l.amount,0))}</td><td class="num">${money(x.paid)}</td><td class="num">${money(x.instalment)}</td><td class="num">${money(x.open[1])}</td></tr>`
+    :'<tr><td colspan="8" class="empty">No loans with a balance at the end of the selected dates.</td></tr>';
+  return report;
+}
+function exportLoanVsPayroll(){
+  let report=renderLoanVsPayroll();if(!report)return;
+  download('loan-vs-payroll-'+report.from+'-to-'+report.to+'.csv',csvText([['employee_number','employee_name','loan_number','loan_date','loan_type','new_in_range','loan_amount','already_paid','instalment_payable_in_period','balance_at_end'],...report.lines.map(l=>[l.loan.employeeNo,l.loan.employeeName,l.loan.applicationNo||'',loanDate(l.loan),l.loan.type||'Loan',l.isNew?'YES':'NO',l.amount,l.paid,l.instalment,l.balance])]),'text/csv');
+}
+runLoanVsPayroll.onclick=renderLoanVsPayroll;
+exportLoanVsPayrollCsv.onclick=exportLoanVsPayroll;
+printLoanVsPayroll.onclick=()=>{if(renderLoanVsPayroll())printWith('loan-vs-payroll')};
+
 // ---------- Payment history ----------
 function paymentReportRows(){
   let employee=paymentReportEmployee.value,from=paymentReportFrom.value,to=paymentReportTo.value,rows=[];
@@ -249,5 +297,6 @@ function renderPage(){
 }
 payrollReconFrom.value=localToday().slice(0,8)+'01';
 payrollReconTo.value=localToday();
+lvpFrom.value=payrollReconFrom.value;lvpTo.value=localToday();
 setReportView('payroll');
 render();

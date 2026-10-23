@@ -1,6 +1,6 @@
 {
   "name": "maluti-fruit-loan-app",
-  "version": "26.13.0",
+  "version": "26.18.0",
   "description": "Maluti Fruit Loan App desktop application",
   "main": "main.js",
   "scripts": {
